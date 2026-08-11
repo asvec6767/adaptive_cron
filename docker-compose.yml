@@ -143,6 +143,53 @@ services:
       - adaptive-cron-net
     restart: unless-stopped
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.12
+    container_name: adaptive-cron-clickhouse
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # Native
+      - "9009:9009"   # Inter-server
+    environment:
+      CLICKHOUSE_DB: adaptive_cron
+      CLICKHOUSE_USER: cron_user
+      CLICKHOUSE_PASSWORD: cron_pass
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml:ro
+      - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - ./docker/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: adaptive-cron-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+    depends_on:
+      - clickhouse
+
 networks:
   adaptive-cron-net:
     driver: bridge
@@ -150,3 +197,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  clickhouse_data:
+  grafana_data:
