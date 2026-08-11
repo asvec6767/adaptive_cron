@@ -31,11 +31,21 @@ CREATE TABLE IF NOT EXISTS job_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes
+-- Create Tasks indexes
 CREATE INDEX idx_tasks_name ON tasks(name);
 CREATE INDEX idx_tasks_is_active ON tasks(is_active);
+CREATE INDEX idx_tasks_is_active_created_at ON tasks(is_active, created_at DESC);
+CREATE INDEX idx_tasks_is_critical ON tasks(is_critical) WHERE is_critical = true;
+CREATE INDEX idx_tasks_active_critical ON tasks(is_active, is_critical, max_load_score);
+CREATE INDEX idx_tasks_schedule ON tasks(schedule) WHERE is_active = true;
+
+-- Create Job Logs indexes
 CREATE INDEX idx_job_logs_task_id ON job_logs(task_id);
 CREATE INDEX idx_job_logs_start_time ON job_logs(start_time);
+CREATE INDEX idx_job_logs_task_id_start_time ON job_logs(task_id, start_time DESC);
+CREATE INDEX idx_job_logs_start_end_time ON job_logs(start_time, end_time);
+CREATE INDEX idx_job_logs_task_name ON job_logs(task_name);
+CREATE INDEX idx_job_logs_metrics_gin ON job_logs USING GIN (metrics_at_start);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
