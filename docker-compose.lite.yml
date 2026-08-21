@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    image: adaptive-cron:latest
+    command: --profile lite --config /etc/adaptive-cron/config.yaml
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+      - ./config/lite.yaml:/etc/adaptive-cron/config.yaml:ro
+    ports:
+      - "8080:8080"
+    environment:
+      - ADAPTIVE_CRON_PROFILE=lite

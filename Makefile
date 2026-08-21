@@ -97,3 +97,43 @@ help:
 	@echo "  make install-cli    - Install taskctl CLI"
 	@echo "  make dev            - Start development environment"
 	@echo "  make status         - Check service status"
+
+
+
+# TODO: Новая версия Makefile для разных конфигов, сгенеренная нейронкой, нужно правильно замерджить со старыми командами выше
+.PHONY: build-lite build-standard build-enterprise run-lite run-standard run-enterprise
+
+# Сборка
+build:
+	go build -o bin/adaptive-cron ./cmd/adaptive-cron
+
+# Запуск разных профилей
+run-lite: build
+	./bin/adaptive-cron --profile lite --config config/lite.yaml
+
+run-standard: build
+	./bin/adaptive-cron --profile standard --config config/standard.yaml
+
+run-enterprise: build
+	./bin/adaptive-cron --profile enterprise --config config/enterprise.yaml
+
+run-cloud: build
+	./bin/adaptive-cron --profile cloud --config config/cloud.yaml
+
+# Запуск с кастомными feature flags
+run-custom: build
+	./bin/adaptive-cron --profile lite --enable metrics.prometheus,transport.grpc
+
+# Список профилей
+list-profiles:
+	./bin/adaptive-cron --list-profiles
+
+# Docker для разных профилей
+docker-lite:
+	docker-compose -f docker-compose.yml -f docker-compose.lite.yml up
+
+docker-standard:
+	docker-compose -f docker-compose.yml -f docker-compose.standard.yml up
+
+docker-enterprise:
+	docker-compose -f docker-compose.yml -f docker-compose.enterprise.yml up

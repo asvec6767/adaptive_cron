@@ -1,0 +1,39 @@
+profile: standard
+database:
+  type: postgres
+  host: localhost
+  port: 5432
+  user: cron_user
+  password: cron_pass
+  dbname: adaptive_cron
+
+queue:
+  type: redis
+  host: localhost
+  port: 6379
+  db: 0
+
+logging:
+  type: file
+  level: info
+  format: json
+  file: ./logs/adaptive-cron.log
+  rotation:
+    max_size: 100
+    max_age: 30
+    max_backups: 5
+
+server:
+  http_port: 8080
+  grpc_port: 9090
+
+metrics:
+  type: prometheus
+  port: 9091
+
+worker:
+  max_concurrent: 10
+
+scheduler:
+  check_interval: 10s
+  type: local

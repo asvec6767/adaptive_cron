@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  postgres-master:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: adaptive_cron
+      POSTGRES_USER: cron_user
+      POSTGRES_PASSWORD: cron_pass
+    volumes:
+      - pg_master_data:/var/lib/postgresql/data
+
+  postgres-slave:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: adaptive_cron
+      POSTGRES_USER: cron_user
+      POSTGRES_PASSWORD: cron_pass
+    volumes:
+      - pg_slave_data:/var/lib/postgresql/data
+
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    environment:
+      CLICKHOUSE_DB: adaptive_cron
+      CLICKHOUSE_USER: cron_user
+      CLICKHOUSE_PASSWORD: cron_pass
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.0
+    environment:
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://etcd:2379"
+    ports:
+      - "2379:2379"
+
+  app:
+    image: adaptive-cron:latest
+    command: --profile enterprise --config /etc/adaptive-cron/config.yaml
+    volumes:
+      - ./config/enterprise.yaml:/etc/adaptive-cron/config.yaml:ro
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+      - "9091:9091"
+    environment:
+      - ADAPTIVE_CRON_PROFILE=enterprise
+      - DB_HOST=postgres-master
+      - NATS_HOST=nats
+      - CLICKHOUSE_HOST=clickhouse
+      - ETCD_ENDPOINTS=etcd:2379
+    depends_on:
+      - postgres-master
+      - postgres-slave
+      - nats
+      - clickhouse
+      - etcd
+
+volumes:
+  pg_master_data:
+  pg_slave_data:
+  clickhouse_data:
