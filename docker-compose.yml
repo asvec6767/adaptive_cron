@@ -1,201 +1,105 @@
 version: '3.8'
 
 services:
+  # Для lite версии - один контейнер
+  app-lite:
+    image: adaptive-cron:latest
+    command: adaptive-cron --profile lite
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+    restart: unless-stopped
+    profiles:
+      - lite
+
+  # Для standard версии - раздельные сервисы
   postgres:
     image: postgres:15-alpine
-    container_name: adaptive-cron-postgres
     environment:
       POSTGRES_DB: adaptive_cron
       POSTGRES_USER: cron_user
       POSTGRES_PASSWORD: cron_pass
-    ports:
-      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
-    networks:
-      - adaptive-cron-net
+      - pg_data:/var/lib/postgresql/data
     restart: unless-stopped
+    profiles:
+      - standard
+      - enterprise
 
   redis:
     image: redis:7-alpine
-    container_name: adaptive-cron-redis
-    ports:
-      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-    networks:
-      - adaptive-cron-net
     restart: unless-stopped
+    profiles:
+      - standard
+      - enterprise
 
-  metric-agent:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: adaptive-cron-metric-agent
-    command: ./metric-agent
-    ports:
-      - "8083:8083"
-    environment:
-      - SERVER_PORT=8083
-      - COLLECT_INTERVAL=5s
-      - LOG_LEVEL=info
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-    networks:
-      - adaptive-cron-net
-    restart: unless-stopped
-
-  task-manager:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: adaptive-cron-task-manager
-    command: ./task-manager
-    ports:
-      - "8081:8081"
-    environment:
-      - SERVER_PORT=8081
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=cron_user
-      - DB_PASSWORD=cron_pass
-      - DB_NAME=adaptive_cron
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - LOG_LEVEL=info
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - adaptive-cron-net
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: adaptive-cron-worker
-    command: ./worker
-    ports:
-      - "8084:8084"
-    environment:
-      - SERVER_PORT=8084
-      - MAX_CONCURRENT=5
-      - LOG_LEVEL=info
-    networks:
-      - adaptive-cron-net
-    restart: unless-stopped
-
-  scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: adaptive-cron-scheduler
-    command: ./scheduler
-    ports:
-      - "8082:8082"
-    environment:
-      - SERVER_PORT=8082
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=cron_user
-      - DB_PASSWORD=cron_pass
-      - DB_NAME=adaptive_cron
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - METRIC_AGENT_URL=http://metric-agent:8083
-      - WORKER_URL=http://worker:8084
-      - CHECK_INTERVAL=10s
-      - LOG_LEVEL=info
-    depends_on:
-      - postgres
-      - redis
-      - metric-agent
-      - worker
-    networks:
-      - adaptive-cron-net
-    restart: unless-stopped
-
-  api-gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: adaptive-cron-api-gateway
-    command: ./api-gateway
+  app-standard:
+    image: adaptive-cron:latest
+    command: adaptive-cron --profile standard --config /etc/config/standard.yaml
     ports:
       - "8080:8080"
-    environment:
-      - SERVER_PORT=8080
-      - TASK_MANAGER_URL=http://task-manager:8081
-      - SCHEDULER_URL=http://scheduler:8082
-      - METRIC_AGENT_URL=http://metric-agent:8083
-      - WORKER_URL=http://worker:8084
-      - LOG_LEVEL=info
+    volumes:
+      - ./configs/standard.yaml:/etc/config/standard.yaml:ro
+      - ./logs:/logs
     depends_on:
-      - task-manager
-      - scheduler
-      - metric-agent
-      - worker
-    networks:
-      - adaptive-cron-net
+      - postgres
+      - redis
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
     restart: unless-stopped
+    profiles:
+      - standard
 
+  # Для enterprise версии
   clickhouse:
     image: clickhouse/clickhouse-server:23.12
-    container_name: adaptive-cron-clickhouse
-    ports:
-      - "8123:8123"   # HTTP
-      - "9000:9000"   # Native
-      - "9009:9009"   # Inter-server
     environment:
       CLICKHOUSE_DB: adaptive_cron
       CLICKHOUSE_USER: cron_user
       CLICKHOUSE_PASSWORD: cron_pass
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./docker/clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml:ro
-      - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
-      - ./docker/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - adaptive-cron-net
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    profiles:
+      - enterprise
 
-  grafana:
-    image: grafana/grafana:10.2.3
-    container_name: adaptive-cron-grafana
+  nats:
+    image: nats:latest
     ports:
-      - "3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
-    networks:
-      - adaptive-cron-net
+      - "4222:4222"
     restart: unless-stopped
-    depends_on:
-      - clickhouse
+    profiles:
+      - enterprise
 
-networks:
-  adaptive-cron-net:
-    driver: bridge
+  app-enterprise:
+    image: adaptive-cron:latest
+    command: adaptive-cron --profile enterprise --config /etc/config/enterprise.yaml
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ./configs/enterprise.yaml:/etc/config/enterprise.yaml:ro
+    depends_on:
+      - postgres
+      - redis
+      - clickhouse
+      - nats
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - CLICKHOUSE_HOST=clickhouse
+      - NATS_HOST=nats
+    restart: unless-stopped
+    profiles:
+      - enterprise
 
 volumes:
-  postgres_data:
+  pg_data:
   redis_data:
   clickhouse_data:
-  grafana_data:
