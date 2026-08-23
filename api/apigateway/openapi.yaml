@@ -1,0 +1,77 @@
+openapi: 3.0.3
+info:
+  title: API Gateway Service API
+  version: 1.0.0
+  description: API Gateway for routing requests to microservices
+
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /health:
+    get:
+      summary: Gateway health check
+      responses:
+        '200':
+          description: Gateway healthy
+
+  /api/v1/gateway/health:
+    get:
+      summary: All services health check
+      responses:
+        '200':
+          description: All services healthy
+        '503':
+          description: Some services unhealthy
+
+  /api/v1/gateway/services:
+    get:
+      summary: List registered services
+      responses:
+        '200':
+          description: List of services
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ServiceConfig'
+                  count:
+                    type: integer
+
+  /api/v1/gateway/routes:
+    get:
+      summary: List registered routes
+      responses:
+        '200':
+          description: List of routes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  routes:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  count:
+                    type: integer
+
+components:
+  schemas:
+    ServiceConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        port:
+          type: integer
+        health_path:
+          type: string
+        api_path:
+          type: string

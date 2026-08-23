@@ -4,172 +4,218 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"adaptive-cron/internal/config"
-	"adaptive-cron/internal/db"
 	"adaptive-cron/internal/features"
-	"adaptive-cron/internal/log"
-	"adaptive-cron/internal/queue"
 )
 
 type App struct {
-	config   *config.Config
-	db       db.Database
-	queue    queue.Queue
-	logger   log.Logger
-	features map[string]*features.FeatureFlag
+	config  *config.Config
+	mu      sync.RWMutex
+	running bool
 
-	scheduler *Scheduler
-	worker    *Worker
-	api       *API
-	metrics   *MetricsCollector
+	// Services
+	scheduler   SchedulerService
+	worker      WorkerService
+	taskManager TaskManagerService
+	metricAgent MetricAgentService
 
-	wg     sync.WaitGroup
-	ctx    context.Context
-	cancel context.CancelFunc
+	// Components
+	transport TransportBinding
+	apiServer APIServer
+
+	// Lifecycle
+	cancelFuncs []context.CancelFunc
+	wg          sync.WaitGroup
 }
 
-type Option func(*App)
+type Option func(*App) error
 
-func WithDatabase(db db.Database) Option {
-	return func(a *App) {
-		a.db = db
+func NewApp(cfg *config.Config, opts ...Option) (*App, error) {
+	app := &App{
+		config: cfg,
 	}
-}
 
-func WithQueue(q queue.Queue) Option {
-	return func(a *App) {
-		a.queue = q
+	// Initialize features from config
+	features.InitFromConfig(cfg.Features)
+
+	// Apply options
+	for _, opt := range opts {
+		if err := opt(app); err != nil {
+			return nil, err
+		}
 	}
-}
 
-func WithLogger(l log.Logger) Option {
-	return func(a *App) {
-		a.logger = l
+	// Build components
+	if err := app.buildComponents(); err != nil {
+		return nil, err
 	}
+
+	return app, nil
 }
 
-func WithConfig(c *config.Config) Option {
-	return func(a *App) {
-		a.config = c
+func (a *App) buildComponents() error {
+	// Build transport based on features
+	transport, err := a.buildTransport()
+	if err != nil {
+		return err
 	}
-}
+	a.transport = transport
 
-func WithFeatures(f map[string]*features.FeatureFlag) Option {
-	return func(a *App) {
-		a.features = f
-	}
-}
-
-func NewApp(options ...Option) *App {
-	app := &App{}
-	for _, opt := range options {
-		opt(app)
-	}
-	app.ctx, app.cancel = context.WithCancel(context.Background())
-	return app
-}
-
-func (a *App) Run() error {
-	// Инициализация компонентов в зависимости от feature flags
-	if err := a.initComponents(); err != nil {
+	// Build services
+	if err := a.buildServices(); err != nil {
 		return err
 	}
 
-	// Запуск компонентов
-	a.startComponents()
-
-	// Ожидание завершения
-	<-a.ctx.Done()
-	a.wg.Wait()
+	// Build API server
+	a.apiServer = NewAPIServer(a.config, a.transport)
 
 	return nil
 }
 
-func (a *App) initComponents() error {
-	// Инициализация БД
-	if a.db != nil {
-		if err := a.db.Connect(); err != nil {
-			return fmt.Errorf("failed to connect DB: %w", err)
-		}
-		if err := a.db.Migrate(); err != nil {
-			return fmt.Errorf("failed to migrate DB: %w", err)
-		}
+func (a *App) buildTransport() (TransportBinding, error) {
+	if features.IsEnabled("transport.inmemory") {
+		return NewInMemoryTransport(), nil
 	}
-
-	// Инициализация планировщика
-	a.scheduler = NewScheduler(SchedulerConfig{
-		DB:            a.db,
-		Queue:         a.queue,
-		Logger:        a.logger,
-		CheckInterval: a.config.Scheduler.CheckInterval,
-		Distributed:   features.IsEnabled(features.FlagDistributedScheduler),
-	})
-
-	// Инициализация воркера
-	if features.IsEnabled(features.FlagWorkerPool) {
-		a.worker = NewWorker(WorkerConfig{
-			Queue:         a.queue,
-			Logger:        a.logger,
-			MaxConcurrent: a.config.Worker.MaxConcurrent,
-		})
+	if features.IsEnabled("transport.rest") {
+		return NewRESTTransport(a.config.Server.HTTPPort)
 	}
+	if features.IsEnabled("transport.grpc") {
+		return NewGRPCTransport(a.config.Server.GRPCPort)
+	}
+	if features.IsEnabled("transport.nats") {
+		return NewNATSTransport(a.config.Queue.Servers)
+	}
+	return nil, fmt.Errorf("no transport feature enabled")
+}
 
-	// Инициализация API
-	a.api = NewAPI(APIConfig{
-		Port:       a.config.Server.HTTPPort,
-		Logger:     a.logger,
-		Scheduler:  a.scheduler,
-		DB:         a.db,
-		EnableGRPC: features.IsEnabled(features.FlagTransportGRPC),
-	})
+func (a *App) buildServices() error {
+	// Build services with injected dependencies
+	a.scheduler = NewSchedulerService(a.config, a.transport)
+	a.worker = NewWorkerService(a.config, a.transport)
+	a.taskManager = NewTaskManagerService(a.config, a.transport)
+	a.metricAgent = NewMetricAgentService(a.config, a.transport)
 
-	// Инициализация метрик
-	if features.IsEnabled(features.FlagMetricsPrometheus) {
-		a.metrics = NewPrometheusMetrics(a.config.Metrics.Port)
-	} else if features.IsEnabled(features.FlagMetricsInMemory) {
-		a.metrics = NewInMemoryMetrics()
+	// Register services with transport (for in-memory binding)
+	if features.IsEnabled("transport.inmemory") {
+		if err := a.transport.RegisterScheduler(a.scheduler); err != nil {
+			return err
+		}
+		if err := a.transport.RegisterWorker(a.worker); err != nil {
+			return err
+		}
+		if err := a.transport.RegisterTaskManager(a.taskManager); err != nil {
+			return err
+		}
+		if err := a.transport.RegisterMetricAgent(a.metricAgent); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (a *App) startComponents() {
-	// Запуск планировщика
+func (a *App) Run(ctx context.Context) error {
+	a.mu.Lock()
+	if a.running {
+		a.mu.Unlock()
+		return fmt.Errorf("app already running")
+	}
+	a.running = true
+	a.mu.Unlock()
+
+	defer func() {
+		a.mu.Lock()
+		a.running = false
+		a.mu.Unlock()
+	}()
+
+	// Connect transport
+	if err := a.transport.Connect(ctx); err != nil {
+		return err
+	}
+	defer a.transport.Close()
+
+	// Start services
+	if err := a.startServices(ctx); err != nil {
+		return err
+	}
+
+	// Start API server
+	if err := a.apiServer.Start(ctx); err != nil {
+		return err
+	}
+
+	// Wait for context cancellation
+	<-ctx.Done()
+
+	// Graceful shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	return a.Shutdown(shutdownCtx)
+}
+
+func (a *App) startServices(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	a.cancelFuncs = append(a.cancelFuncs, cancel)
+
+	// Start scheduler
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		if err := a.scheduler.Start(a.ctx); err != nil {
-			a.logger.Error("Scheduler error", "error", err)
+		if err := a.scheduler.Start(ctx); err != nil {
+			// Log error
 		}
 	}()
 
-	// Запуск воркера
-	if a.worker != nil {
-		a.wg.Add(1)
-		go func() {
-			defer a.wg.Done()
-			if err := a.worker.Start(a.ctx); err != nil {
-				a.logger.Error("Worker error", "error", err)
-			}
-		}()
-	}
-
-	// Запуск API
+	// Start worker
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		if err := a.api.Start(a.ctx); err != nil {
-			a.logger.Error("API error", "error", err)
+		if err := a.worker.Start(ctx); err != nil {
+			// Log error
 		}
 	}()
 
-	// Запуск метрик
-	if a.metrics != nil {
-		a.wg.Add(1)
-		go func() {
-			defer a.wg.Done()
-			a.metrics.Start(a.ctx)
-		}()
+	// Start metric agent
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		if err := a.metricAgent.Start(ctx); err != nil {
+			// Log error
+		}
+	}()
+
+	return nil
+}
+
+func (a *App) Shutdown(ctx context.Context) error {
+	// Cancel all running goroutines
+	for _, cancel := range a.cancelFuncs {
+		cancel()
 	}
+
+	// Wait for goroutines to finish
+	done := make(chan struct{})
+	go func() {
+		a.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (a *App) GetConfig() *config.Config {
+	return a.config
+}
+
+func (a *App) GetFeatures() map[string]*features.FeatureFlag {
+	return features.GetAll()
 }

@@ -1,0 +1,36 @@
+profile: lite
+
+database:
+  type: sqlite
+  dsn: ./data/adaptive-cron.db
+
+queue:
+  type: memory
+  max_size: 100
+
+logging:
+  type: file
+  level: info
+  format: text
+  file: ./logs/adaptive-cron.log
+
+server:
+  http_port: 8080
+
+worker:
+  max_concurrent: 3
+
+scheduler:
+  check_interval: 10s
+  type: local
+
+metrics:
+  type: basic
+
+features:
+  - db.sqlite
+  - queue.memory
+  - log.file
+  - transport.inmemory
+  - metrics.basic
+  - scheduler.local

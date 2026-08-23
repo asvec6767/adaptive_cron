@@ -2,37 +2,61 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
+    container_name: adaptive-cron-postgres
     environment:
       POSTGRES_DB: adaptive_cron
       POSTGRES_USER: cron_user
       POSTGRES_PASSWORD: cron_pass
+    ports:
+      - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
+    container_name: adaptive-cron-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
 
-  app:
+  app-standard:
     image: adaptive-cron:latest
-    command: --profile standard --config /etc/adaptive-cron/config.yaml
-    volumes:
-      - ./logs:/logs
-      - ./config/standard.yaml:/etc/adaptive-cron/config.yaml:ro
+    container_name: adaptive-cron-standard
+    command: adaptive-cron --profile standard --config /etc/adaptive-cron/config.yaml
     ports:
       - "8080:8080"
       - "9090:9090"
       - "9091:9091"
+    volumes:
+      - ./logs:/logs
+      - ./configs/standard.yaml:/etc/adaptive-cron/config.yaml:ro
     environment:
       - ADAPTIVE_CRON_PROFILE=standard
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
+      - ADAPTIVE_CRON_DATABASE_HOST=postgres
+      - ADAPTIVE_CRON_QUEUE_HOST=redis
+      - ADAPTIVE_CRON_LOG_LEVEL=info
     depends_on:
       - postgres
       - redis
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+
+networks:
+  adaptive-cron-net:
+    driver: bridge
 
 volumes:
-  pg_data:
+  postgres_data:
   redis_data:
+  logs:

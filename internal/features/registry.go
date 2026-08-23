@@ -2,10 +2,10 @@ package features
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
-// FeatureFlag определяет один feature
 type FeatureFlag struct {
 	Name        string
 	Description string
@@ -13,24 +13,47 @@ type FeatureFlag struct {
 	Category    string
 }
 
-// FeatureRegistry хранит все feature flags
-type FeatureRegistry struct {
+type Registry struct {
 	mu    sync.RWMutex
 	flags map[string]*FeatureFlag
 }
 
-var globalRegistry = &FeatureRegistry{
+var globalRegistry = &Registry{
 	flags: make(map[string]*FeatureFlag),
 }
 
-// Регистрация feature
 func Register(flag *FeatureFlag) {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
 	globalRegistry.flags[flag.Name] = flag
 }
 
-// Проверка включен ли feature
+func RegisterAllFromList(names []string) {
+	for _, name := range names {
+		desc := FlagDescriptions[name]
+		if desc == "" {
+			desc = name
+		}
+		Register(&FeatureFlag{
+			Name:        name,
+			Description: desc,
+			Enabled:     true,
+			Category:    getCategory(name),
+		})
+	}
+}
+
+func getCategory(name string) string {
+	parts := make(map[string]string)
+	for _, flag := range AllFlags {
+		parts[flag] = flag[:strings.Index(flag, ".")]
+	}
+	if cat, ok := parts[name]; ok {
+		return cat
+	}
+	return "general"
+}
+
 func IsEnabled(name string) bool {
 	globalRegistry.mu.RLock()
 	defer globalRegistry.mu.RUnlock()
@@ -40,7 +63,6 @@ func IsEnabled(name string) bool {
 	return false
 }
 
-// Включить feature
 func Enable(name string) error {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
@@ -51,7 +73,6 @@ func Enable(name string) error {
 	return fmt.Errorf("feature %s not found", name)
 }
 
-// Отключить feature
 func Disable(name string) error {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
@@ -62,7 +83,6 @@ func Disable(name string) error {
 	return fmt.Errorf("feature %s not found", name)
 }
 
-// Получить все features
 func GetAll() map[string]*FeatureFlag {
 	globalRegistry.mu.RLock()
 	defer globalRegistry.mu.RUnlock()
@@ -71,4 +91,31 @@ func GetAll() map[string]*FeatureFlag {
 		result[k] = v
 	}
 	return result
+}
+
+func GetEnabled() []string {
+	globalRegistry.mu.RLock()
+	defer globalRegistry.mu.RUnlock()
+	result := []string{}
+	for name, flag := range globalRegistry.flags {
+		if flag.Enabled {
+			result = append(result, name)
+		}
+	}
+	return result
+}
+
+func InitFromConfig(features []string) {
+	for _, name := range features {
+		desc := FlagDescriptions[name]
+		if desc == "" {
+			desc = name
+		}
+		Register(&FeatureFlag{
+			Name:        name,
+			Description: desc,
+			Enabled:     true,
+			Category:    getCategory(name),
+		})
+	}
 }

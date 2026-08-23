@@ -1,29 +1,28 @@
 package transport
 
 import (
+	"adaptive-cron/internal/common/models"
 	"context"
 	"time"
 )
 
-// ServiceBinding определяет как компоненты общаются друг с другом
+// ServiceBinding defines how services communicate
 type ServiceBinding interface {
-	// Соединение
 	Connect(ctx context.Context) error
 	Close() error
 
-	// Получение клиентов
+	// Client interfaces
 	GetScheduler() SchedulerClient
 	GetWorker() WorkerClient
 	GetTaskManager() TaskManagerClient
 	GetMetricAgent() MetricAgentClient
 
-	// Регистрация сервисов (для серверной стороны)
+	// Service registration (for in-memory binding)
 	RegisterScheduler(service SchedulerService) error
 	RegisterWorker(service WorkerService) error
 	RegisterTaskManager(service TaskManagerService) error
 	RegisterMetricAgent(service MetricAgentService) error
 
-	// Статус
 	Health(ctx context.Context) error
 	GetType() BindingType
 }
@@ -31,45 +30,49 @@ type ServiceBinding interface {
 type BindingType string
 
 const (
-	InMemoryBinding    BindingType = "inmemory"
-	LocalBinding       BindingType = "local"       // localhost REST/gRPC
-	DistributedBinding BindingType = "distributed" // NATS/gRPC across network
+	InMemoryBinding BindingType = "inmemory"
+	RESTBinding     BindingType = "rest"
+	GRPCBinding     BindingType = "grpc"
+	NATSBinding     BindingType = "nats"
 )
 
-// Клиенты для взаимодействия с сервисами
+// Scheduler client interface
 type SchedulerClient interface {
-	ScheduleTask(ctx context.Context, task *Task) (*ScheduleResponse, error)
-	GetNextTasks(ctx context.Context) ([]*Task, error)
-	GetDelayedQueue(ctx context.Context) ([]*DelayedTask, error)
+	ScheduleTask(ctx context.Context, task *models.Task) (*ScheduleResponse, error)
+	GetNextTasks(ctx context.Context) ([]*models.Task, error)
+	GetDelayedQueue(ctx context.Context) ([]*models.DelayedTask, error)
 	TriggerTask(ctx context.Context, taskID string, force bool) error
 }
 
+// Worker client interface
 type WorkerClient interface {
 	Execute(ctx context.Context, req *ExecuteRequest) (*ExecuteResponse, error)
 	GetStatus(ctx context.Context, jobID string) (*JobStatus, error)
 	GetStats(ctx context.Context) (*WorkerStats, error)
 }
 
+// TaskManager client interface
 type TaskManagerClient interface {
-	CreateTask(ctx context.Context, task *Task) error
-	GetTask(ctx context.Context, id string) (*Task, error)
-	ListTasks(ctx context.Context, filter *TaskFilter) ([]*Task, error)
-	UpdateTask(ctx context.Context, task *Task) error
+	CreateTask(ctx context.Context, task *models.Task) error
+	GetTask(ctx context.Context, id string) (*models.Task, error)
+	ListTasks(ctx context.Context, filter *TaskFilter) ([]*models.Task, error)
+	UpdateTask(ctx context.Context, task *models.Task) error
 	DeleteTask(ctx context.Context, id string) error
 	ToggleTask(ctx context.Context, id string) error
 }
 
+// MetricAgent client interface
 type MetricAgentClient interface {
-	GetCurrentMetrics(ctx context.Context) (*SystemMetrics, error)
-	GetMetricsHistory(ctx context.Context, limit int) ([]*SystemMetrics, error)
+	GetCurrentMetrics(ctx context.Context) (*models.SystemMetrics, error)
+	GetMetricsHistory(ctx context.Context, limit int) ([]*models.SystemMetrics, error)
 	GetLoadScore(ctx context.Context) (float64, error)
 }
 
-// Сервисы (для регистрации)
+// Service interfaces (for registration)
 type SchedulerService interface {
-	ScheduleTask(ctx context.Context, task *Task) (*ScheduleResponse, error)
-	GetNextTasks(ctx context.Context) ([]*Task, error)
-	GetDelayedQueue(ctx context.Context) ([]*DelayedTask, error)
+	ScheduleTask(ctx context.Context, task *models.Task) (*ScheduleResponse, error)
+	GetNextTasks(ctx context.Context) ([]*models.Task, error)
+	GetDelayedQueue(ctx context.Context) ([]*models.DelayedTask, error)
 	TriggerTask(ctx context.Context, taskID string, force bool) error
 }
 
@@ -80,54 +83,26 @@ type WorkerService interface {
 }
 
 type TaskManagerService interface {
-	CreateTask(ctx context.Context, task *Task) error
-	GetTask(ctx context.Context, id string) (*Task, error)
-	ListTasks(ctx context.Context, filter *TaskFilter) ([]*Task, error)
-	UpdateTask(ctx context.Context, task *Task) error
+	CreateTask(ctx context.Context, task *models.Task) error
+	GetTask(ctx context.Context, id string) (*models.Task, error)
+	ListTasks(ctx context.Context, filter *TaskFilter) ([]*models.Task, error)
+	UpdateTask(ctx context.Context, task *models.Task) error
 	DeleteTask(ctx context.Context, id string) error
 	ToggleTask(ctx context.Context, id string) error
 }
 
 type MetricAgentService interface {
-	GetCurrentMetrics(ctx context.Context) (*SystemMetrics, error)
-	GetMetricsHistory(ctx context.Context, limit int) ([]*SystemMetrics, error)
+	GetCurrentMetrics(ctx context.Context) (*models.SystemMetrics, error)
+	GetMetricsHistory(ctx context.Context, limit int) ([]*models.SystemMetrics, error)
 	GetLoadScore(ctx context.Context) (float64, error)
 }
 
-// Модели данных для транспорта
-type Task struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Command        string    `json:"command"`
-	Schedule       string    `json:"schedule"`
-	IsCritical     bool      `json:"is_critical"`
-	MaxLoadScore   float64   `json:"max_load_score"`
-	MaxCPUPercent  float64   `json:"max_cpu_percent"`
-	MaxMemoryMB    int64     `json:"max_memory_mb"`
-	TimeoutSeconds int       `json:"timeout_seconds"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-}
-
-type SystemMetrics struct {
-	Timestamp     time.Time `json:"timestamp"`
-	CPUPercent    float64   `json:"cpu_percent"`
-	LoadAvg1      float64   `json:"load_avg1"`
-	LoadAvg5      float64   `json:"load_avg5"`
-	LoadAvg15     float64   `json:"load_avg15"`
-	MemoryUsed    uint64    `json:"memory_used"`
-	MemoryTotal   uint64    `json:"memory_total"`
-	MemoryPercent float64   `json:"memory_percent"`
-	SwapUsed      uint64    `json:"swap_used"`
-	SwapTotal     uint64    `json:"swap_total"`
-	SwapPercent   float64   `json:"swap_percent"`
-}
-
-type DelayedTask struct {
-	TaskID     string    `json:"task_id"`
-	DelayUntil time.Time `json:"delay_until"`
-	Attempt    int       `json:"attempt"`
+// Transport models
+type ScheduleResponse struct {
+	Scheduled bool   `json:"scheduled"`
+	JobID     string `json:"job_id,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Delay     string `json:"delay,omitempty"`
 }
 
 type ExecuteRequest struct {
@@ -155,13 +130,7 @@ type WorkerStats struct {
 	ActiveJobs    int `json:"active_jobs"`
 	CompletedJobs int `json:"completed_jobs"`
 	FailedJobs    int `json:"failed_jobs"`
-}
-
-type ScheduleResponse struct {
-	Scheduled bool   `json:"scheduled"`
-	JobID     string `json:"job_id,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-	Delay     string `json:"delay,omitempty"`
+	TotalJobs     int `json:"total_jobs"`
 }
 
 type TaskFilter struct {

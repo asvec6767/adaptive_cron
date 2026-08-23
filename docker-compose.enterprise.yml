@@ -1,70 +1,114 @@
 version: '3.8'
 
 services:
-  postgres-master:
-    image: postgres:15
+  postgres:
+    image: postgres:15-alpine
+    container_name: adaptive-cron-postgres
     environment:
       POSTGRES_DB: adaptive_cron
       POSTGRES_USER: cron_user
       POSTGRES_PASSWORD: cron_pass
-    volumes:
-      - pg_master_data:/var/lib/postgresql/data
-
-  postgres-slave:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: adaptive_cron
-      POSTGRES_USER: cron_user
-      POSTGRES_PASSWORD: cron_pass
-    volumes:
-      - pg_slave_data:/var/lib/postgresql/data
-
-  nats:
-    image: nats:latest
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: adaptive-cron-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
 
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:23.12
+    container_name: adaptive-cron-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+      - "9009:9009"
     environment:
       CLICKHOUSE_DB: adaptive_cron
       CLICKHOUSE_USER: cron_user
       CLICKHOUSE_PASSWORD: cron_pass
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml:ro
+      - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml:ro
+      - ./docker/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  etcd:
-    image: quay.io/coreos/etcd:v3.5.0
-    environment:
-      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
-      ETCD_ADVERTISE_CLIENT_URLS: "http://etcd:2379"
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: adaptive-cron-grafana
     ports:
-      - "2379:2379"
-
-  app:
-    image: adaptive-cron:latest
-    command: --profile enterprise --config /etc/adaptive-cron/config.yaml
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
     volumes:
-      - ./config/enterprise.yaml:/etc/adaptive-cron/config.yaml:ro
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+    depends_on:
+      - clickhouse
+
+  app-enterprise:
+    image: adaptive-cron:latest
+    container_name: adaptive-cron-enterprise
+    command: adaptive-cron --profile enterprise --config /etc/adaptive-cron/config.yaml
     ports:
       - "8080:8080"
       - "9090:9090"
       - "9091:9091"
+    volumes:
+      - ./logs:/logs
+      - ./configs/enterprise.yaml:/etc/adaptive-cron/config.yaml:ro
     environment:
       - ADAPTIVE_CRON_PROFILE=enterprise
-      - DB_HOST=postgres-master
-      - NATS_HOST=nats
-      - CLICKHOUSE_HOST=clickhouse
-      - ETCD_ENDPOINTS=etcd:2379
+      - ADAPTIVE_CRON_DATABASE_HOST=postgres
+      - ADAPTIVE_CRON_QUEUE_HOST=redis
+      - ADAPTIVE_CRON_LOGGING_HOST=clickhouse
+      - ADAPTIVE_CRON_LOG_LEVEL=info
     depends_on:
-      - postgres-master
-      - postgres-slave
-      - nats
+      - postgres
+      - redis
       - clickhouse
-      - etcd
+      - grafana
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+
+networks:
+  adaptive-cron-net:
+    driver: bridge
 
 volumes:
-  pg_master_data:
-  pg_slave_data:
+  postgres_data:
+  redis_data:
   clickhouse_data:
+  grafana_data:
+  logs:

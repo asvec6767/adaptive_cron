@@ -1,0 +1,215 @@
+openapi: 3.0.3
+info:
+  title: Task Manager Service API
+  version: 1.0.0
+  description: Task manager service for CRUD operations
+
+servers:
+  - url: http://localhost:8081
+
+paths:
+  /api/v1/tasks:
+    post:
+      summary: Create a new task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+    get:
+      summary: List all tasks
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - name: critical
+          in: query
+          schema:
+            type: boolean
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+
+  /api/v1/tasks/{id}:
+    get:
+      summary: Get task by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+    put:
+      summary: Update task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        '200':
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+    delete:
+      summary: Delete task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task deleted
+
+  /api/v1/tasks/{id}/toggle:
+    post:
+      summary: Toggle task active status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task toggled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+
+components:
+  schemas:
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        command:
+          type: string
+        schedule:
+          type: string
+        is_critical:
+          type: boolean
+        max_load_score:
+          type: number
+          format: float
+        max_cpu_percent:
+          type: number
+          format: float
+        max_memory_mb:
+          type: integer
+        timeout_seconds:
+          type: integer
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      required:
+        - name
+        - command
+        - schedule
+      properties:
+        name:
+          type: string
+        command:
+          type: string
+        schedule:
+          type: string
+        is_critical:
+          type: boolean
+          default: false
+        max_load_score:
+          type: number
+          format: float
+          default: 0.7
+        max_cpu_percent:
+          type: number
+          format: float
+          default: 80
+        max_memory_mb:
+          type: integer
+          default: 1024
+        timeout_seconds:
+          type: integer
+          default: 300
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        command:
+          type: string
+        schedule:
+          type: string
+        is_critical:
+          type: boolean
+        max_load_score:
+          type: number
+          format: float
+        max_cpu_percent:
+          type: number
+          format: float
+        max_memory_mb:
+          type: integer
+        timeout_seconds:
+          type: integer
+        is_active:
+          type: boolean

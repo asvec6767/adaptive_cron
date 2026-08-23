@@ -1,0 +1,108 @@
+openapi: 3.0.3
+info:
+  title: Metric Agent Service API
+  version: 1.0.0
+  description: Metric agent service for collecting system metrics
+
+servers:
+  - url: http://localhost:8083
+
+paths:
+  /api/v1/metrics/current:
+    get:
+      summary: Get current system metrics
+      responses:
+        '200':
+          description: Current system metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemMetrics'
+
+  /api/v1/metrics/history:
+    get:
+      summary: Get metrics history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Metrics history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metrics:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SystemMetrics'
+                  total:
+                    type: integer
+
+  /api/v1/metrics/load:
+    get:
+      summary: Get current load score
+      responses:
+        '200':
+          description: Load score
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  load_score:
+                    type: number
+                    format: float
+
+  /api/v1/metrics/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+
+components:
+  schemas:
+    SystemMetrics:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        cpu_percent:
+          type: number
+          format: float
+        load_avg1:
+          type: number
+          format: float
+        load_avg5:
+          type: number
+          format: float
+        load_avg15:
+          type: number
+          format: float
+        memory_used:
+          type: integer
+        memory_total:
+          type: integer
+        memory_percent:
+          type: number
+          format: float
+        swap_used:
+          type: integer
+        swap_total:
+          type: integer
+        swap_percent:
+          type: number
+          format: float

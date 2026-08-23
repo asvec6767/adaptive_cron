@@ -1,14 +1,27 @@
 version: '3.8'
 
 services:
-  app:
+  app-lite:
     image: adaptive-cron:latest
-    command: --profile lite --config /etc/adaptive-cron/config.yaml
+    container_name: adaptive-cron-lite
+    command: adaptive-cron --profile lite
+    ports:
+      - "8080:8080"
     volumes:
       - ./data:/data
       - ./logs:/logs
-      - ./config/lite.yaml:/etc/adaptive-cron/config.yaml:ro
-    ports:
-      - "8080:8080"
+      - ./configs/lite.yaml:/etc/adaptive-cron/config.yaml:ro
     environment:
       - ADAPTIVE_CRON_PROFILE=lite
+      - ADAPTIVE_CRON_LOG_LEVEL=info
+    networks:
+      - adaptive-cron-net
+    restart: unless-stopped
+
+networks:
+  adaptive-cron-net:
+    driver: bridge
+
+volumes:
+  data:
+  logs:

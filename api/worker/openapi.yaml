@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info:
+  title: Worker Service API
+  version: 1.0.0
+  description: Worker service for executing tasks
+
+servers:
+  - url: http://localhost:8084
+
+paths:
+  /api/v1/execute:
+    post:
+      summary: Execute a command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteRequest'
+      responses:
+        '202':
+          description: Command accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteResponse'
+
+  /api/v1/status/{id}:
+    get:
+      summary: Get job status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+
+  /api/v1/worker/stats:
+    get:
+      summary: Get worker statistics
+      responses:
+        '200':
+          description: Worker statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerStats'
+
+  /api/v1/worker/jobs:
+    get:
+      summary: List all jobs
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Job'
+                  total:
+                    type: integer
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+
+components:
+  schemas:
+    ExecuteRequest:
+      type: object
+      required:
+        - command
+      properties:
+        task_id:
+          type: string
+        command:
+          type: string
+        timeout:
+          type: integer
+          default: 300
+
+    ExecuteResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+
+    JobStatus:
+      type: object
+      properties:
+        job_id:
+          type: string
+        task_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed, timeout]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        exit_code:
+          type: integer
+        output:
+          type: string
+        error:
+          type: string
+
+    WorkerStats:
+      type: object
+      properties:
+        active_jobs:
+          type: integer
+        completed_jobs:
+          type: integer
+        failed_jobs:
+          type: integer
+        total_jobs:
+          type: integer
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+        task_id:
+          type: string
+        command:
+          type: string
+        status:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        exit_code:
+          type: integer

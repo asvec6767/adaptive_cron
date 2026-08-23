@@ -1,0 +1,136 @@
+openapi: 3.0.3
+info:
+  title: Scheduler Service API
+  version: 1.0.0
+  description: Scheduler service for adaptive task scheduling
+
+servers:
+  - url: http://localhost:8082
+
+paths:
+  /api/v1/scheduler/next:
+    get:
+      summary: Get tasks scheduled for next execution
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+                  count:
+                    type: integer
+
+  /api/v1/scheduler/trigger/{id}:
+    post:
+      summary: Trigger task execution immediately
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: force
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Task triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: triggered
+
+  /api/v1/scheduler/queue:
+    get:
+      summary: Get delayed queue
+      responses:
+        '200':
+          description: List of delayed tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DelayedTask'
+                  count:
+                    type: integer
+
+  /api/v1/scheduler/queue/{id}:
+    delete:
+      summary: Remove task from delayed queue
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task removed
+
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+
+components:
+  schemas:
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        command:
+          type: string
+        schedule:
+          type: string
+        is_critical:
+          type: boolean
+        max_load_score:
+          type: number
+          format: float
+        max_cpu_percent:
+          type: number
+          format: float
+        max_memory_mb:
+          type: integer
+        timeout_seconds:
+          type: integer
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DelayedTask:
+      type: object
+      properties:
+        task_id:
+          type: string
+        delay_until:
+          type: string
+          format: date-time
+        attempt:
+          type: integer

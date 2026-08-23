@@ -2,145 +2,100 @@ package config
 
 import (
 	"fmt"
-	"strings"
-
-	"github.com/spf13/viper"
+	"time"
 )
 
 type Config struct {
-	Profile   string                 `mapstructure:"profile"`
-	Database  DatabaseConfig         `mapstructure:"database"`
-	Queue     QueueConfig            `mapstructure:"queue"`
-	Logging   LoggingConfig          `mapstructure:"logging"`
-	Server    ServerConfig           `mapstructure:"server"`
-	Metrics   MetricsConfig          `mapstructure:"metrics"`
-	Worker    WorkerConfig           `mapstructure:"worker"`
-	Scheduler SchedulerConfig        `mapstructure:"scheduler"`
-	Features  map[string]bool        `mapstructure:"features"`
-	Custom    map[string]interface{} `mapstructure:"custom"`
+	Profile   string          `yaml:"profile" mapstructure:"profile"`
+	Database  DatabaseConfig  `yaml:"database" mapstructure:"database"`
+	Queue     QueueConfig     `yaml:"queue" mapstructure:"queue"`
+	Logging   LoggingConfig   `yaml:"logging" mapstructure:"logging"`
+	Server    ServerConfig    `yaml:"server" mapstructure:"server"`
+	Worker    WorkerConfig    `yaml:"worker" mapstructure:"worker"`
+	Scheduler SchedulerConfig `yaml:"scheduler" mapstructure:"scheduler"`
+	Metrics   MetricsConfig   `yaml:"metrics" mapstructure:"metrics"`
+	Features  []string        `yaml:"features" mapstructure:"features"`
 }
 
 type DatabaseConfig struct {
-	Type        string            `mapstructure:"type"`
-	DSN         string            `mapstructure:"dsn"`
-	Host        string            `mapstructure:"host"`
-	Port        int               `mapstructure:"port"`
-	User        string            `mapstructure:"user"`
-	Password    string            `mapstructure:"password"`
-	DBName      string            `mapstructure:"dbname"`
-	Replication ReplicationConfig `mapstructure:"replication"`
+	Type     string `yaml:"type" mapstructure:"type"`
+	DSN      string `yaml:"dsn" mapstructure:"dsn"`
+	Host     string `yaml:"host" mapstructure:"host"`
+	Port     int    `yaml:"port" mapstructure:"port"`
+	User     string `yaml:"user" mapstructure:"user"`
+	Password string `yaml:"password" mapstructure:"password"`
+	DBName   string `yaml:"dbname" mapstructure:"dbname"`
 }
 
 type QueueConfig struct {
-	Type       string   `mapstructure:"type"`
-	MaxSize    int      `mapstructure:"max_size"`
-	Host       string   `mapstructure:"host"`
-	Port       int      `mapstructure:"port"`
-	DB         int      `mapstructure:"db"`
-	Servers    []string `mapstructure:"servers"`
-	Persistent bool     `mapstructure:"persistent"`
+	Type    string   `yaml:"type" mapstructure:"type"`
+	MaxSize int      `yaml:"max_size" mapstructure:"max_size"`
+	Host    string   `yaml:"host" mapstructure:"host"`
+	Port    int      `yaml:"port" mapstructure:"port"`
+	DB      int      `yaml:"db" mapstructure:"db"`
+	Servers []string `yaml:"servers" mapstructure:"servers"`
 }
 
 type LoggingConfig struct {
-	Type          string         `mapstructure:"type"`
-	Level         string         `mapstructure:"level"`
-	Format        string         `mapstructure:"format"`
-	File          string         `mapstructure:"file"`
-	Rotation      RotationConfig `mapstructure:"rotation"`
-	Host          string         `mapstructure:"host"`
-	Port          int            `mapstructure:"port"`
-	Database      string         `mapstructure:"database"`
-	Table         string         `mapstructure:"table"`
-	BatchSize     int            `mapstructure:"batch_size"`
-	FlushInterval string         `mapstructure:"flush_interval"`
-}
-
-type ServerConfig struct {
-	HTTPPort int `mapstructure:"http_port"`
-	GRPCPort int `mapstructure:"grpc_port"`
-	NATSPort int `mapstructure:"nats_port"`
-}
-
-type MetricsConfig struct {
-	Type string `mapstructure:"type"`
-	Port int    `mapstructure:"port"`
-}
-
-type WorkerConfig struct {
-	MaxConcurrent int `mapstructure:"max_concurrent"`
-	QueueSize     int `mapstructure:"queue_size"`
-}
-
-type SchedulerConfig struct {
-	Type          string           `mapstructure:"type"`
-	CheckInterval string           `mapstructure:"check_interval"`
-	Leadership    LeadershipConfig `mapstructure:"leadership"`
-}
-
-type ReplicationConfig struct {
-	Enabled    bool     `mapstructure:"enabled"`
-	SlaveHosts []string `mapstructure:"slave_hosts"`
+	Type          string         `yaml:"type" mapstructure:"type"`
+	Level         string         `yaml:"level" mapstructure:"level"`
+	Format        string         `yaml:"format" mapstructure:"format"`
+	File          string         `yaml:"file" mapstructure:"file"`
+	Rotation      RotationConfig `yaml:"rotation" mapstructure:"rotation"`
+	Host          string         `yaml:"host" mapstructure:"host"`
+	Port          int            `yaml:"port" mapstructure:"port"`
+	Database      string         `yaml:"database" mapstructure:"database"`
+	Table         string         `yaml:"table" mapstructure:"table"`
+	BatchSize     int            `yaml:"batch_size" mapstructure:"batch_size"`
+	FlushInterval string         `yaml:"flush_interval" mapstructure:"flush_interval"`
 }
 
 type RotationConfig struct {
-	MaxSize    int `mapstructure:"max_size"`
-	MaxAge     int `mapstructure:"max_age"`
-	MaxBackups int `mapstructure:"max_backups"`
+	MaxSize    int `yaml:"max_size" mapstructure:"max_size"`
+	MaxAge     int `yaml:"max_age" mapstructure:"max_age"`
+	MaxBackups int `yaml:"max_backups" mapstructure:"max_backups"`
 }
 
-type LeadershipConfig struct {
-	Type      string   `mapstructure:"type"`
-	Endpoints []string `mapstructure:"endpoints"`
+type ServerConfig struct {
+	HTTPPort int `yaml:"http_port" mapstructure:"http_port"`
+	GRPCPort int `yaml:"grpc_port" mapstructure:"grpc_port"`
 }
 
-// Загрузка конфигурации
-func LoadConfig(profile string) (*Config, error) {
-	v := viper.New()
-
-	// Установка имени конфига
-	v.SetConfigName("config")
-	v.SetConfigType("yaml")
-	v.AddConfigPath(".")
-	v.AddConfigPath("./config")
-	v.AddConfigPath("/etc/adaptive-cron")
-
-	// Переменные окружения
-	v.SetEnvPrefix("ADAPTIVE_CRON")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	// Загрузка базового конфига
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, err
-		}
-	}
-
-	// Если указан профиль, загружаем его
-	if profile != "" {
-		profileConfig := v.Sub(profile)
-		if profileConfig != nil {
-			v.MergeConfigMap(profileConfig.AllSettings())
-		}
-	}
-
-	var config Config
-	if err := v.Unmarshal(&config); err != nil {
-		return nil, err
-	}
-
-	return &config, nil
+type WorkerConfig struct {
+	MaxConcurrent int `yaml:"max_concurrent" mapstructure:"max_concurrent"`
+	QueueSize     int `yaml:"queue_size" mapstructure:"queue_size"`
 }
 
-// Создание DSN для разных БД
-func (c *DatabaseConfig) GetDSN() string {
-	switch c.Type {
+type SchedulerConfig struct {
+	CheckInterval string `yaml:"check_interval" mapstructure:"check_interval"`
+	Type          string `yaml:"type" mapstructure:"type"`
+}
+
+type MetricsConfig struct {
+	Type string `yaml:"type" mapstructure:"type"`
+	Port int    `yaml:"port" mapstructure:"port"`
+}
+
+func (c *Config) GetDSN() string {
+	switch c.Database.Type {
 	case "sqlite":
-		return c.DSN
+		return c.Database.DSN
 	case "postgres":
 		return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-			c.Host, c.Port, c.User, c.Password, c.DBName)
+			c.Database.Host, c.Database.Port, c.Database.User,
+			c.Database.Password, c.Database.DBName)
 	default:
 		return ""
 	}
+}
+
+func (c *Config) GetCheckInterval() time.Duration {
+	if c.Scheduler.CheckInterval == "" {
+		return 10 * time.Second
+	}
+	d, err := time.ParseDuration(c.Scheduler.CheckInterval)
+	if err != nil {
+		return 10 * time.Second
+	}
+	return d
 }

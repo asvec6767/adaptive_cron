@@ -1,7 +1,9 @@
 package transport
 
 import (
+	"adaptive-cron/internal/common/models"
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -29,7 +31,6 @@ func NewInMemoryBinding() *InMemoryBinding {
 }
 
 func (b *InMemoryBinding) Connect(ctx context.Context) error {
-	// In-memory не требует подключения
 	return nil
 }
 
@@ -86,6 +87,13 @@ func (b *InMemoryBinding) RegisterMetricAgent(service MetricAgentService) error 
 }
 
 func (b *InMemoryBinding) Health(ctx context.Context) error {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.schedulerService == nil || b.workerService == nil ||
+		b.taskManagerService == nil || b.metricAgentService == nil {
+		return fmt.Errorf("not all services registered")
+	}
 	return nil
 }
 
@@ -93,20 +101,20 @@ func (b *InMemoryBinding) GetType() BindingType {
 	return InMemoryBinding
 }
 
-// InMemory клиенты
+// InMemory clients
 type InMemorySchedulerClient struct {
 	service SchedulerService
 }
 
-func (c *InMemorySchedulerClient) ScheduleTask(ctx context.Context, task *Task) (*ScheduleResponse, error) {
+func (c *InMemorySchedulerClient) ScheduleTask(ctx context.Context, task *models.Task) (*ScheduleResponse, error) {
 	return c.service.ScheduleTask(ctx, task)
 }
 
-func (c *InMemorySchedulerClient) GetNextTasks(ctx context.Context) ([]*Task, error) {
+func (c *InMemorySchedulerClient) GetNextTasks(ctx context.Context) ([]*models.Task, error) {
 	return c.service.GetNextTasks(ctx)
 }
 
-func (c *InMemorySchedulerClient) GetDelayedQueue(ctx context.Context) ([]*DelayedTask, error) {
+func (c *InMemorySchedulerClient) GetDelayedQueue(ctx context.Context) ([]*models.DelayedTask, error) {
 	return c.service.GetDelayedQueue(ctx)
 }
 
@@ -134,19 +142,19 @@ type InMemoryTaskManagerClient struct {
 	service TaskManagerService
 }
 
-func (c *InMemoryTaskManagerClient) CreateTask(ctx context.Context, task *Task) error {
+func (c *InMemoryTaskManagerClient) CreateTask(ctx context.Context, task *models.Task) error {
 	return c.service.CreateTask(ctx, task)
 }
 
-func (c *InMemoryTaskManagerClient) GetTask(ctx context.Context, id string) (*Task, error) {
+func (c *InMemoryTaskManagerClient) GetTask(ctx context.Context, id string) (*models.Task, error) {
 	return c.service.GetTask(ctx, id)
 }
 
-func (c *InMemoryTaskManagerClient) ListTasks(ctx context.Context, filter *TaskFilter) ([]*Task, error) {
+func (c *InMemoryTaskManagerClient) ListTasks(ctx context.Context, filter *TaskFilter) ([]*models.Task, error) {
 	return c.service.ListTasks(ctx, filter)
 }
 
-func (c *InMemoryTaskManagerClient) UpdateTask(ctx context.Context, task *Task) error {
+func (c *InMemoryTaskManagerClient) UpdateTask(ctx context.Context, task *models.Task) error {
 	return c.service.UpdateTask(ctx, task)
 }
 
@@ -162,11 +170,11 @@ type InMemoryMetricAgentClient struct {
 	service MetricAgentService
 }
 
-func (c *InMemoryMetricAgentClient) GetCurrentMetrics(ctx context.Context) (*SystemMetrics, error) {
+func (c *InMemoryMetricAgentClient) GetCurrentMetrics(ctx context.Context) (*models.SystemMetrics, error) {
 	return c.service.GetCurrentMetrics(ctx)
 }
 
-func (c *InMemoryMetricAgentClient) GetMetricsHistory(ctx context.Context, limit int) ([]*SystemMetrics, error) {
+func (c *InMemoryMetricAgentClient) GetMetricsHistory(ctx context.Context, limit int) ([]*models.SystemMetrics, error) {
 	return c.service.GetMetricsHistory(ctx, limit)
 }
 

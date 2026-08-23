@@ -1,0 +1,55 @@
+profile: enterprise
+
+database:
+  type: postgres
+  host: postgres-master
+  port: 5432
+  user: cron_user
+  password: cron_pass
+  dbname: adaptive_cron
+
+queue:
+  type: redis
+  host: redis
+  port: 6379
+  db: 0
+
+logging:
+  type: clickhouse
+  level: info
+  format: json
+  host: clickhouse
+  port: 9000
+  database: adaptive_cron
+  table: logs
+  batch_size: 100
+  flush_interval: 5s
+
+server:
+  http_port: 8080
+  grpc_port: 9090
+
+worker:
+  max_concurrent: 50
+  queue_size: 1000
+
+scheduler:
+  check_interval: 10s
+  type: distributed
+
+metrics:
+  type: prometheus
+  port: 9091
+
+features:
+  - db.postgres
+  - db.replication
+  - queue.redis
+  - queue.persistent
+  - log.clickhouse
+  - log.structured
+  - transport.grpc
+  - transport.nats
+  - metrics.prometheus
+  - service.discovery
+  - scheduler.distributed

@@ -1,28 +1,20 @@
 version: '3.8'
 
 services:
-  # Для lite версии - один контейнер
-  app-lite:
-    image: adaptive-cron:latest
-    command: adaptive-cron --profile lite
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/data
-      - ./logs:/logs
-    restart: unless-stopped
-    profiles:
-      - lite
-
-  # Для standard версии - раздельные сервисы
   postgres:
     image: postgres:15-alpine
+    container_name: adaptive-cron-postgres
     environment:
       POSTGRES_DB: adaptive_cron
       POSTGRES_USER: cron_user
       POSTGRES_PASSWORD: cron_pass
+    ports:
+      - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - adaptive-cron-net
     restart: unless-stopped
     profiles:
       - standard
@@ -30,76 +22,23 @@ services:
 
   redis:
     image: redis:7-alpine
+    container_name: adaptive-cron-redis
+    ports:
+      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    networks:
+      - adaptive-cron-net
     restart: unless-stopped
     profiles:
       - standard
       - enterprise
 
-  app-standard:
-    image: adaptive-cron:latest
-    command: adaptive-cron --profile standard --config /etc/config/standard.yaml
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./configs/standard.yaml:/etc/config/standard.yaml:ro
-      - ./logs:/logs
-    depends_on:
-      - postgres
-      - redis
-    environment:
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-    restart: unless-stopped
-    profiles:
-      - standard
-
-  # Для enterprise версии
-  clickhouse:
-    image: clickhouse/clickhouse-server:23.12
-    environment:
-      CLICKHOUSE_DB: adaptive_cron
-      CLICKHOUSE_USER: cron_user
-      CLICKHOUSE_PASSWORD: cron_pass
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-    restart: unless-stopped
-    profiles:
-      - enterprise
-
-  nats:
-    image: nats:latest
-    ports:
-      - "4222:4222"
-    restart: unless-stopped
-    profiles:
-      - enterprise
-
-  app-enterprise:
-    image: adaptive-cron:latest
-    command: adaptive-cron --profile enterprise --config /etc/config/enterprise.yaml
-    ports:
-      - "8080:8080"
-      - "9090:9090"
-    volumes:
-      - ./configs/enterprise.yaml:/etc/config/enterprise.yaml:ro
-    depends_on:
-      - postgres
-      - redis
-      - clickhouse
-      - nats
-    environment:
-      - DB_HOST=postgres
-      - REDIS_HOST=redis
-      - CLICKHOUSE_HOST=clickhouse
-      - NATS_HOST=nats
-    restart: unless-stopped
-    profiles:
-      - enterprise
+networks:
+  adaptive-cron-net:
+    driver: bridge
 
 volumes:
-  pg_data:
+  postgres_data:
   redis_data:
-  clickhouse_data:

@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"adaptive-cron/internal/common/models"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,7 +15,6 @@ type RESTBinding struct {
 	baseURL string
 	client  *http.Client
 
-	// Клиенты для сервисов
 	schedulerClient   *RESTClient
 	workerClient      *RESTClient
 	taskManagerClient *RESTClient
@@ -31,7 +31,6 @@ func NewRESTBinding(baseURL string, timeout time.Duration) *RESTBinding {
 }
 
 func (b *RESTBinding) Connect(ctx context.Context) error {
-	// Проверяем доступность
 	if err := b.Health(ctx); err != nil {
 		return fmt.Errorf("failed to connect to REST services: %w", err)
 	}
@@ -72,7 +71,6 @@ func (b *RESTBinding) GetMetricAgent() MetricAgentClient {
 }
 
 func (b *RESTBinding) RegisterScheduler(service SchedulerService) error {
-	// REST не регистрирует сервисы, они должны быть запущены отдельно
 	return fmt.Errorf("REST binding does not support service registration")
 }
 
@@ -102,10 +100,10 @@ func (b *RESTBinding) Health(ctx context.Context) error {
 }
 
 func (b *RESTBinding) GetType() BindingType {
-	return LocalBinding
+	return RESTBinding
 }
 
-// REST клиент
+// REST client
 type RESTClient struct {
 	baseURL string
 	client  *http.Client
@@ -151,21 +149,21 @@ func (c *RESTClient) doRequest(ctx context.Context, method, path string, body in
 	return nil
 }
 
-// Реализация клиентских методов для Scheduler
-func (c *RESTClient) ScheduleTask(ctx context.Context, task *Task) (*ScheduleResponse, error) {
+// Scheduler methods
+func (c *RESTClient) ScheduleTask(ctx context.Context, task *models.Task) (*ScheduleResponse, error) {
 	var result ScheduleResponse
 	err := c.doRequest(ctx, "POST", "/api/v1/scheduler/schedule", task, &result)
 	return &result, err
 }
 
-func (c *RESTClient) GetNextTasks(ctx context.Context) ([]*Task, error) {
-	var result []*Task
+func (c *RESTClient) GetNextTasks(ctx context.Context) ([]*models.Task, error) {
+	var result []*models.Task
 	err := c.doRequest(ctx, "GET", "/api/v1/scheduler/next", nil, &result)
 	return result, err
 }
 
-func (c *RESTClient) GetDelayedQueue(ctx context.Context) ([]*DelayedTask, error) {
-	var result []*DelayedTask
+func (c *RESTClient) GetDelayedQueue(ctx context.Context) ([]*models.DelayedTask, error) {
+	var result []*models.DelayedTask
 	err := c.doRequest(ctx, "GET", "/api/v1/scheduler/queue", nil, &result)
 	return result, err
 }
@@ -178,7 +176,7 @@ func (c *RESTClient) TriggerTask(ctx context.Context, taskID string, force bool)
 	return c.doRequest(ctx, "POST", path, nil, nil)
 }
 
-// Реализация клиентских методов для Worker
+// Worker methods
 func (c *RESTClient) Execute(ctx context.Context, req *ExecuteRequest) (*ExecuteResponse, error) {
 	var result ExecuteResponse
 	err := c.doRequest(ctx, "POST", "/api/v1/execute", req, &result)
@@ -197,28 +195,29 @@ func (c *RESTClient) GetStats(ctx context.Context) (*WorkerStats, error) {
 	return &result, err
 }
 
-// Реализация клиентских методов для TaskManager
-func (c *RESTClient) CreateTask(ctx context.Context, task *Task) error {
+// TaskManager methods
+func (c *RESTClient) CreateTask(ctx context.Context, task *models.Task) error {
 	return c.doRequest(ctx, "POST", "/api/v1/tasks", task, nil)
 }
 
-func (c *RESTClient) GetTask(ctx context.Context, id string) (*Task, error) {
-	var result Task
+func (c *RESTClient) GetTask(ctx context.Context, id string) (*models.Task, error) {
+	var result models.Task
 	err := c.doRequest(ctx, "GET", "/api/v1/tasks/"+id, nil, &result)
 	return &result, err
 }
 
-func (c *RESTClient) ListTasks(ctx context.Context, filter *TaskFilter) ([]*Task, error) {
-	var result []*Task
+func (c *RESTClient) ListTasks(ctx context.Context, filter *TaskFilter) ([]*models.Task, error) {
+	var result []*models.Task
 	path := "/api/v1/tasks"
 	if filter != nil {
-		// Добавляем параметры
+		// Build query string
+		// Implementation depends on requirements
 	}
 	err := c.doRequest(ctx, "GET", path, nil, &result)
 	return result, err
 }
 
-func (c *RESTClient) UpdateTask(ctx context.Context, task *Task) error {
+func (c *RESTClient) UpdateTask(ctx context.Context, task *models.Task) error {
 	return c.doRequest(ctx, "PUT", "/api/v1/tasks/"+task.ID, task, nil)
 }
 
@@ -230,16 +229,17 @@ func (c *RESTClient) ToggleTask(ctx context.Context, id string) error {
 	return c.doRequest(ctx, "POST", "/api/v1/tasks/"+id+"/toggle", nil, nil)
 }
 
-// Реализация клиентских методов для MetricAgent
-func (c *RESTClient) GetCurrentMetrics(ctx context.Context) (*SystemMetrics, error) {
-	var result SystemMetrics
+// MetricAgent methods
+func (c *RESTClient) GetCurrentMetrics(ctx context.Context) (*models.SystemMetrics, error) {
+	var result models.SystemMetrics
 	err := c.doRequest(ctx, "GET", "/api/v1/metrics/current", nil, &result)
 	return &result, err
 }
 
-func (c *RESTClient) GetMetricsHistory(ctx context.Context, limit int) ([]*SystemMetrics, error) {
-	var result []*SystemMetrics
-	err := c.doRequest(ctx, "GET", "/api/v1/metrics/history?limit="+string(rune(limit)), nil, &result)
+func (c *RESTClient) GetMetricsHistory(ctx context.Context, limit int) ([]*models.SystemMetrics, error) {
+	var result []*models.SystemMetrics
+	path := "/api/v1/metrics/history?limit=" + fmt.Sprintf("%d", limit)
+	err := c.doRequest(ctx, "GET", path, nil, &result)
 	return result, err
 }
 
