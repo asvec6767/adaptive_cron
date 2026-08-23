@@ -30,10 +30,10 @@ type ServiceBinding interface {
 type BindingType string
 
 const (
-	InMemoryBinding BindingType = "inmemory"
-	RESTBinding     BindingType = "rest"
-	GRPCBinding     BindingType = "grpc"
-	NATSBinding     BindingType = "nats"
+	InMemoryType BindingType = "inmemory"
+	RESTType     BindingType = "rest"
+	GRPCType     BindingType = "grpc"
+	NATSType     BindingType = "nats"
 )
 
 // Scheduler client interface

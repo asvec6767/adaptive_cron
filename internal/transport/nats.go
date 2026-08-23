@@ -56,5 +56,5 @@ func (b *NATSBinding) Health(ctx context.Context) error {
 }
 
 func (b *NATSBinding) GetType() BindingType {
-	return NATSBinding
+	return NATSType
 }

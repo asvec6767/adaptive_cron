@@ -79,13 +79,13 @@ func (a *App) buildTransport() (TransportBinding, error) {
 		return NewInMemoryTransport(), nil
 	}
 	if features.IsEnabled("transport.rest") {
-		return NewRESTTransport(a.config.Server.HTTPPort)
+		return NewRESTTransport(a.config.Server.HTTPPort), nil
 	}
 	if features.IsEnabled("transport.grpc") {
-		return NewGRPCTransport(a.config.Server.GRPCPort)
+		return NewGRPCTransport(a.config.Server.GRPCPort), nil
 	}
 	if features.IsEnabled("transport.nats") {
-		return NewNATSTransport(a.config.Queue.Servers)
+		return NewNATSTransport(a.config.Queue.Servers), nil
 	}
 	return nil, fmt.Errorf("no transport feature enabled")
 }

@@ -100,7 +100,7 @@ func (b *RESTBinding) Health(ctx context.Context) error {
 }
 
 func (b *RESTBinding) GetType() BindingType {
-	return RESTBinding
+	return RESTType
 }
 
 // REST client

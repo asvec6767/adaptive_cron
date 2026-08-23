@@ -56,5 +56,5 @@ func (b *GRPCBinding) Health(ctx context.Context) error {
 }
 
 func (b *GRPCBinding) GetType() BindingType {
-	return GRPCBinding
+	return GRPCType
 }

@@ -98,7 +98,7 @@ func (b *InMemoryBinding) Health(ctx context.Context) error {
 }
 
 func (b *InMemoryBinding) GetType() BindingType {
-	return InMemoryBinding
+	return InMemoryType
 }
 
 // InMemory clients

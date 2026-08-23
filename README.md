@@ -12,7 +12,7 @@ Adaptive Cron — система планирования задач, анало
 - Микросервисная архитектура с Clean Code слоями
 - Feature Flags для гибкой настройки
 - Три профиля: Lite, Standard, Enterprise
-- CLI интерфейс (отдельный сервис)
+- CLI интерфейс (встроен в единый бинарник)
 - Горизонтальное масштабирование (TODO)
 - Машинное обучение для предсказания времени выполнения (TODO)
 
@@ -25,12 +25,13 @@ Adaptive Cron — система планирования задач, анало
 - Scheduler (8082) — планирование, адаптивный алгоритм, управление очередью.
 - Metric Agent (8083) — сбор системных метрик (CPU, память, load average).
 - Worker (8084) — выполнение команд.
-- CLI (taskctl) — управление из командной строки, отдельный сервис.
+- CLI — встроен в единый бинарник `adaptive-cron`, управление через флаги командной строки.
 
 Коммуникация между сервисами через транспортный слой:
 - In-Memory (для Lite профиля)
-- REST/gRPC (для Standard профиля)
-- gRPC/NATS (для Enterprise профиля)
+- REST (для Standard профиля)
+- gRPC (TODO)
+- NATS (TODO)
 
 NATS используется только как транспорт между сервисами. Очередь задач всегда либо in-memory, либо Redis, в зависимости от профиля.
 
@@ -41,7 +42,7 @@ NATS используется только как транспорт между 
 - Domain — сущности, ошибки, константы. Не имеет внешних зависимостей.
 - Repository — интерфейсы доступа к данным.
 - UseCase — бизнес-логика, координирует слои.
-- Delivery — обработка запросов (HTTP/gRPC).
+- Delivery — обработка запросов (HTTP).
 
 Зависимости направлены внутрь: Domain <- Repository <- UseCase <- Delivery.
 
@@ -59,14 +60,14 @@ Lite:
 - Метрики: Встроенные
 
 Standard:
-- Транспорт: REST + gRPC
+- Транспорт: REST
 - База данных: PostgreSQL (через GORM)
 - Очередь: Redis
 - Логи: Файл (JSON формат)
 - Метрики: Prometheus
 
 Enterprise:
-- Транспорт: gRPC + NATS
+- Транспорт: REST (gRPC и NATS в TODO)
 - База данных: PostgreSQL (через GORM)
 - Очередь: Redis
 - Логи: ClickHouse + Grafana
@@ -78,7 +79,7 @@ Feature Flags загружаются из конфига при старте, н
 - log.file / log.clickhouse
 - transport.inmemory / transport.rest / transport.grpc / transport.nats
 - metrics.basic / metrics.prometheus
-- scheduler.distributed (TODO)
+- scheduler.local / scheduler.distributed (TODO)
 
 ## Адаптивный алгоритм
 
@@ -91,7 +92,7 @@ Load Score = (CPU% * 0.4) + (Memory% * 0.3) + (LoadAvg1 / cores * 0.3)
 4. Проверить Load Score > max_load_score — отложить на score * 60 секунд.
 5. Если все проверки пройдены — запустить задачу через Worker.
 
-Отложенные задачи помещаются в очередь с экспоненциальной задержкой.
+Отложенные задачи помещаются в очередь с экспоненциальной задержкой. Базовый интервал 30 секунд, максимальный 1 час.
 
 Алгоритм расширяем для добавления новых проверок (диск I/O, сеть, и т.д.). Поддержка машинного обучения для предсказания времени выполнения запланирована в TODO.
 
@@ -100,15 +101,17 @@ Load Score = (CPU% * 0.4) + (Memory% * 0.3) + (LoadAvg1 / cores * 0.3)
 Базовый (все профили):
 - Go 1.21+
 - gorilla/mux (HTTP)
-- cobra/viper (CLI и конфиг)
+- viper (конфигурация через YAML)
 - logrus (логирование)
 - GORM (ORM, с возможностью замены на чистые SQL запросы)
+- robfig/cron (парсер cron)
 - testify (тестирование)
+- google/uuid (генерация ID)
 
 Опциональные компоненты по профилям:
 - SQLite / PostgreSQL
 - In-Memory / Redis (очередь)
-- NATS (транспорт для Enterprise)
+- NATS (транспорт для Enterprise, TODO)
 - ClickHouse + Grafana (логи для Enterprise)
 - Prometheus (метрики для Standard и Enterprise)
 
@@ -140,7 +143,9 @@ adaptive-cron/
 │   │   ├── repository/
 │   │   ├── usecase/
 │   │   └── delivery/
-│   ├── apigateway/             # API Gateway (опционально)
+│   ├── apigateway/             # API Gateway
+│   │   ├── domain/
+│   │   ├── usecase/
 │   │   └── delivery/
 │   ├── transport/              # Транспортный слой
 │   │   ├── interface.go
@@ -150,6 +155,7 @@ adaptive-cron/
 │   │   └── nats.go
 │   ├── config/                 # Конфигурация
 │   │   ├── config.go
+│   │   ├── loader.go
 │   │   └── profiles.go
 │   ├── features/               # Feature flags
 │   │   ├── flags.go
@@ -160,18 +166,32 @@ adaptive-cron/
 │   │   │   ├── metric.go
 │   │   │   └── log.go
 │   │   ├── errors/
+│   │   │   └── errors.go
 │   │   └── utils/
+│   │       └── timeutil.go
 │   └── app/                    # Сборка приложения
 │       ├── app.go
 │       └── builder.go
 ├── pkg/
-│   ├── logger/                 # Логирование (файл, ClickHouse)
+│   ├── logger/                 # Логирование
+│   │   ├── logger.go
+│   │   └── clickhouse.go
 │   └── cronparser/             # Парсер cron
+│       └── parser.go
 ├── configs/
 │   ├── lite.yaml
 │   ├── standard.yaml
 │   └── enterprise.yaml
-├── docker-compose*.yml
+├── api/
+│   ├── scheduler/openapi.yaml
+│   ├── worker/openapi.yaml
+│   ├── taskmanager/openapi.yaml
+│   ├── metricagent/openapi.yaml
+│   └── apigateway/openapi.yaml
+├── docker-compose.yml
+├── docker-compose.lite.yml
+├── docker-compose.standard.yml
+├── docker-compose.enterprise.yml
 ├── Makefile
 └── go.mod
 ```
@@ -182,9 +202,13 @@ adaptive-cron/
 - PROFILE — lite/standard/enterprise
 - LOG_LEVEL — debug/info/warn/error
 - LOG_FORMAT — text/json
-- DATABASE_DSN — строка подключения
+- DATABASE_DSN — строка подключения (для SQLite)
+- DATABASE_HOST, DATABASE_PORT, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME — для PostgreSQL
 - QUEUE_TYPE — memory/redis
+- QUEUE_HOST, QUEUE_PORT, QUEUE_DB — для Redis
 - WORKER_MAX_CONCURRENT — число параллельных задач
+- SERVER_HTTP_PORT — порт HTTP API
+- SERVER_GRPC_PORT — порт gRPC (TODO)
 
 Файлы конфигурации в формате YAML. Пример lite.yaml:
 
@@ -199,11 +223,24 @@ queue:
 logging:
   type: file
   level: info
+  format: text
   file: ./logs/adaptive-cron.log
 server:
   http_port: 8080
 worker:
   max_concurrent: 3
+scheduler:
+  check_interval: 10s
+  type: local
+metrics:
+  type: basic
+features:
+  - db.sqlite
+  - queue.memory
+  - log.file
+  - transport.inmemory
+  - metrics.basic
+  - scheduler.local
 ```
 
 ## Запуск
@@ -213,6 +250,9 @@ worker:
 make build
 ./bin/adaptive-cron --profile lite
 ./bin/adaptive-cron --profile standard --config configs/standard.yaml
+./bin/adaptive-cron --profile enterprise --config configs/enterprise.yaml
+./bin/adaptive-cron --list-profiles
+./bin/adaptive-cron --profile lite --enable metrics.prometheus
 ```
 
 Docker Compose:
@@ -221,6 +261,92 @@ make docker-lite
 make docker-standard
 make docker-enterprise
 ```
+
+## Команды Makefile
+
+```
+make build              - Сборка бинарника
+make run-lite           - Запуск с профилем lite
+make run-standard       - Запуск с профилем standard
+make run-enterprise     - Запуск с профилем enterprise
+make docker-lite        - Запуск lite в Docker
+make docker-standard    - Запуск standard в Docker
+make docker-enterprise  - Запуск enterprise в Docker
+make docker-down        - Остановка всех контейнеров
+make test               - Запуск всех тестов
+make test-unit          - Unit тесты
+make test-integration   - Интеграционные тесты
+make lint               - Линтер
+make clean              - Очистка
+make install-cli        - Установка CLI
+make deps               - Установка зависимостей
+make help               - Справка
+```
+
+## API Endpoints
+
+### API Gateway (8080)
+```
+GET  /health
+GET  /api/v1/gateway/health
+GET  /api/v1/gateway/services
+GET  /api/v1/gateway/routes
+/*   (прокси к сервисам)
+```
+
+### Task Manager (8081)
+```
+POST   /api/v1/tasks
+GET    /api/v1/tasks
+GET    /api/v1/tasks/{id}
+PUT    /api/v1/tasks/{id}
+DELETE /api/v1/tasks/{id}
+POST   /api/v1/tasks/{id}/toggle
+GET    /health
+```
+
+### Scheduler (8082)
+```
+GET  /api/v1/scheduler/next
+POST /api/v1/scheduler/trigger/{id}?force=false
+GET  /api/v1/scheduler/queue
+DELETE /api/v1/scheduler/queue/{id}
+GET  /health
+```
+
+### Metric Agent (8083)
+```
+GET /api/v1/metrics/current
+GET /api/v1/metrics/history?limit=100
+GET /api/v1/metrics/load
+GET /api/v1/metrics/health
+GET /health
+```
+
+### Worker (8084)
+```
+POST /api/v1/execute
+GET  /api/v1/status/{id}
+GET  /api/v1/worker/stats
+GET  /api/v1/worker/jobs
+GET  /health
+```
+
+## Порты сервисов
+
+| Сервис | Порт |
+|--------|------|
+| API Gateway | 8080 |
+| Task Manager | 8081 |
+| Scheduler | 8082 |
+| Metric Agent | 8083 |
+| Worker | 8084 |
+| gRPC | 9090 (TODO) |
+| Prometheus | 9091 |
+| PostgreSQL | 5432 |
+| Redis | 6379 |
+| ClickHouse | 8123/9000 |
+| Grafana | 3000 |
 
 ## Тестирование
 
@@ -237,17 +363,22 @@ make coverage
 - Архитектура, Clean Code, профили
 - CLI интерфейс
 - Docker Compose
+- In-Memory и REST транспорт
+- SQLite, PostgreSQL, Redis
+- Базовое логирование
 
 Версия 1.1 (в разработке):
 - gRPC для внутренней коммуникации
+- NATS транспорт
+- ClickHouse логирование
 - Prometheus + Grafana
 - Web UI
 
 Версия 2.0:
 - Горизонтальное масштабирование (Leader Election для Scheduler)
 - Машинное обучение для предсказания времени выполнения и нагрузки
-- ClickHouse аналитика
 - Kubernetes Helm
+- Service Discovery (etcd/Consul)
 
 ## Лицензия
 
