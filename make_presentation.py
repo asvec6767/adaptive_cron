@@ -130,8 +130,19 @@ def slide_table(title, headers, rows, *, accent=ACCENT, col_widths=None):
               size=34, bold=True, color=TEXT_DARK)
 
     n_rows, n_cols = len(rows) + 1, len(headers)
-    left, top = Inches(0.9), Inches(1.8)
-    width, height = Inches(11.5), Inches(0.55 * n_rows)
+
+    # --- Автоподбор высоты строки и шрифта, чтобы таблица влезла в слайд ---
+    top_in = 1.8                      # верх таблицы, дюймы
+    bottom_margin_in = 0.4            # запас снизу, дюймы
+    max_height_in = prs.slide_height.inches - top_in - bottom_margin_in
+    row_h_in = min(0.55, max_height_in / n_rows)
+    font_size = 16 if row_h_in >= 0.5 else (14 if row_h_in >= 0.42 else 12)
+    head_size = font_size
+
+    left, top = Inches(0.9), Inches(top_in)
+    width = Inches(11.5)
+    height = Inches(row_h_in * n_rows)
+
     table = s.shapes.add_table(n_rows, n_cols, left, top, width, height).table
 
     if col_widths:
@@ -144,7 +155,7 @@ def slide_table(title, headers, rows, *, accent=ACCENT, col_widths=None):
         cell.text = h
         cell.fill.solid()
         cell.fill.fore_color.rgb = accent
-        _style_cell(cell, color=TEXT_LIGHT, bold=True, size=16)
+        _style_cell(cell, color=TEXT_LIGHT, bold=True, size=head_size)
 
     for r, row in enumerate(rows, start=1):
         for c, val in enumerate(row):
@@ -154,7 +165,7 @@ def slide_table(title, headers, rows, *, accent=ACCENT, col_widths=None):
             cell.fill.fore_color.rgb = (
                 RGBColor(0xFF, 0xFF, 0xFF) if r % 2 else RGBColor(0xEC, 0xF0, 0xF6)
             )
-            _style_cell(cell, color=TEXT_DARK, bold=False, size=15)
+            _style_cell(cell, color=TEXT_DARK, bold=False, size=font_size)
     return s
 
 def _style_cell(cell, *, color, bold, size):
@@ -190,6 +201,53 @@ def slide_code(title, code, *, accent=ACCENT):
         run.font.name = FONT_CODE
         run.font.size = Pt(14)
         run.font.color.rgb = CODE_FG
+    return s
+
+def slide_terminal(title, blocks, *, accent=ACCENT_2):
+    """
+    Слайд-«терминал». blocks = список кортежей (command, output).
+    command — строка приглашения, output — многострочный вывод.
+    """
+    s = prs.slides.add_slide(BLANK)
+    _set_bg(s, BG_LIGHT)
+    _add_accent_bar(s, 0.6, 0.55, 0.1, 0.9, accent)
+    _add_text(s, 0.9, 0.5, 11.5, 1.0, title,
+              size=34, bold=True, color=TEXT_DARK)
+
+    box = s.shapes.add_textbox(Inches(0.9), Inches(1.8),
+                               Inches(11.5), Inches(5.2))
+    box.fill.solid()
+    box.fill.fore_color.rgb = CODE_BG
+    box.line.fill.background()
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.35)
+    tf.margin_top = Inches(0.25)
+    tf.margin_right = Inches(0.35)
+    tf.margin_bottom = Inches(0.25)
+
+    first_par = True
+    for cmd, out in blocks:
+        # строка приглашения: $ команда
+        p = tf.paragraphs[0] if first_par else tf.add_paragraph()
+        first_par = False
+        p.space_before = Pt(6)
+        run = p.add_run()
+        run.text = "$ " + cmd
+        run.font.name = FONT_CODE
+        run.font.size = Pt(13)
+        run.font.bold = True
+        run.font.color.rgb = CODE_ACCENT
+
+        # вывод
+        if out:
+            for line in out.strip("\n").splitlines():
+                p = tf.add_paragraph()
+                run = p.add_run()
+                run.text = line
+                run.font.name = FONT_CODE
+                run.font.size = Pt(12)
+                run.font.color.rgb = CODE_FG
     return s
 
 def slide_architecture():
@@ -232,6 +290,101 @@ def slide_architecture():
         _add_text(s, left + 0.2, top + 1.15, card_w - 0.4, 0.8,
                   desc, size=13, color=TEXT_DARK)
     return s
+
+def _box(s, left, top, w, h, text, *, fill, border, text_color=TEXT_DARK,
+         size=13, bold=True):
+    shape = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                               Inches(left), Inches(top),
+                               Inches(w), Inches(h))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = fill
+    shape.line.color.rgb = border
+    shape.line.width = Pt(1.5)
+    tf = shape.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.05)
+    tf.margin_right = Inches(0.05)
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = text
+    run.font.name = FONT_MAIN
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.color.rgb = text_color
+    return shape
+
+def _arrow(s, x1, y1, x2, y2, *, color=ACCENT, width=Pt(1.75), dashed=False):
+    conn = s.shapes.add_connector(
+        2,  # MSO_CONNECTOR.STRAIGHT
+        Inches(x1), Inches(y1), Inches(x2), Inches(y2),
+    )
+    conn.line.color.rgb = color
+    conn.line.width = width
+    if dashed:
+        from pptx.enum.dml import MSO_LINE_DASH_STYLE
+        conn.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+    # стрелка на конце
+    from pptx.oxml.ns import qn
+    ln = conn.line._get_or_add_ln()
+    tail = ln.makeelement(qn('a:tailEnd'), {'type': 'triangle'})
+    ln.append(tail)
+    return conn
+
+def slide_architecture_diagram():
+    s = prs.slides.add_slide(BLANK)
+    _set_bg(s, BG_LIGHT)
+    _add_accent_bar(s, 0.6, 0.55, 0.1, 0.9, ACCENT)
+    _add_text(s, 0.9, 0.5, 11.5, 1.0, "Диаграмма архитектуры",
+              size=34, bold=True, color=TEXT_DARK)
+
+    # --- Верхний уровень: клиент ---
+    _box(s, 5.4, 1.7, 2.5, 0.7, "Клиент / CLI",
+         fill=RGBColor(0xE8, 0xF1, 0xFB), border=ACCENT)
+
+    # --- API Gateway ---
+    _box(s, 5.4, 2.9, 2.5, 0.8, "API Gateway :8080\n(REST)",
+         fill=RGBColor(0xFF, 0xFF, 0xFF), border=ACCENT, size=12)
+
+    # --- Сервисы (3 в ряд) ---
+    services = [
+        ("Task Manager :8081", "CRUD задач", ACCENT_2),
+        ("Scheduler :8082", "Адаптивное планирование", ACCENT_3),
+        ("Metric Agent :8083", "CPU / Mem / Load", ACCENT),
+    ]
+    box_w, box_h, gap = 3.5, 1.3, 0.35
+    start_x = (prs.slide_width.inches - (box_w * 3 + gap * 2)) / 2
+    y = 4.15
+    centers = []
+    for i, (name, sub, color) in enumerate(services):
+        left = start_x + i * (box_w + gap)
+        _box(s, left, y, box_w, box_h, f"{name}\n{sub}",
+             fill=RGBColor(0xFF, 0xFF, 0xFF), border=color, size=12)
+        centers.append(left + box_w / 2)
+
+    # --- Worker снизу ---
+    _box(s, 5.4, 5.9, 2.5, 0.8, "Worker :8084",
+         fill=RGBColor(0xFF, 0xFF, 0xFF), border=ACCENT_2, size=12)
+
+    # --- Инфраструктура (тонкая строка) ---
+    _box(s, 0.9, 6.95, 11.5, 0.4,
+         "Инфраструктура:   SQLite / PostgreSQL   ·   In-Memory / Redis   ·   Файл / ClickHouse+Grafana   ·   Prometheus",
+         fill=RGBColor(0xEC, 0xF0, 0xF6), border=TEXT_MUTED,
+         text_color=TEXT_DARK, size=11, bold=False)
+
+    # --- Стрелки: клиент → gateway ---
+    _arrow(s, 6.65, 2.4, 6.65, 2.9)
+
+    # --- gateway → сервисы ---
+    gy = 3.7
+    for cx in centers:
+        _arrow(s, 6.65, gy, cx, y)
+
+    # --- scheduler → worker ---
+    _arrow(s, centers[1], y + box_h, 6.65, 5.9)
+
+    # --- Worker → инфраструктура ---
+    _arrow(s, 6.65, 6.7, 6.65, 6.95, dashed=True, color=TEXT_MUTED)
 
 def slide_algorithm():
     """Слайд с формулой Load Score и шагами алгоритма."""
@@ -470,6 +623,9 @@ slide_profiles()
 # 5. Архитектура
 slide_architecture()
 
+# 5b. Диаграмма архитектуры
+slide_architecture_diagram()
+
 # 6. Clean Code слои
 slide_section(
     "Clean Code слои",
@@ -563,6 +719,47 @@ make docker-standard
 make docker-enterprise
 """,
     accent=ACCENT_2,
+)
+
+# 11b. Скриншоты работы (терминал)
+slide_terminal(
+    "Как это выглядит в работе",
+    [
+        (
+            "./bin/adaptive-cron --profile lite",
+            """
+2026-10-05T10:00:01 INFO  profile=lite transport=in-memory db=sqlite
+2026-10-05T10:00:01 INFO  metric agent started    port=8083
+2026-10-05T10:00:01 INFO  task manager started    port=8081
+2026-10-05T10:00:01 INFO  scheduler started       port=8082 interval=10s
+2026-10-05T10:00:01 INFO  worker started          port=8084 max_concurrent=3
+2026-10-05T10:00:01 INFO  adaptive-cron is ready  gateway=8080
+""",
+        ),
+        (
+            "curl -s localhost:8083/api/v1/metrics/load",
+            """
+{
+  "cpu_percent": 42.3,
+  "memory_percent": 55.1,
+  "load_avg_1": 1.24,
+  "cores": 8,
+  "load_score": 0.41
+}
+""",
+        ),
+        (
+            "curl -s -X POST localhost:8082/api/v1/scheduler/trigger/42",
+            """
+{
+  "task_id": "42",
+  "decision": "deferred",
+  "reason": "load_score 0.41 > max_load_score 0.30",
+  "retry_in_seconds": 25
+}
+""",
+        ),
+    ],
 )
 
 # 12. API Endpoints
