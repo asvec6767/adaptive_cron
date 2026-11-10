@@ -1,0 +1,9 @@
+# Build context: target repository root. This is a CI image, not a runtime image.
+FROM golang:1.25.9-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV GOTOOLCHAIN=go1.25.9 GOWORK=off
+RUN GOBIN=/usr/local/bin go install honnef.co/go/tools/cmd/staticcheck@v0.7.0 \
+    && GOBIN=/usr/local/bin go install github.com/securego/gosec/v2/cmd/gosec@v2.23.0
+WORKDIR /workspace
+CMD ["python3", "--version"]
