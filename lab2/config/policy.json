@@ -1,8 +1,0 @@
-{
-  "schema": 1,
-  "block_severities": ["HIGH", "MEDIUM"],
-  "staticcheck_checks": "all",
-  "gosec_version": "v2.23.0",
-  "staticcheck_version": "v0.7.0",
-  "go_toolchain": "go1.25.9"
-}
